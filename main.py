@@ -15,6 +15,28 @@ import yt_dlp
 
 # --------------- Helpers ---------------
 
+class YTDLogger:
+    def __init__(self, callback=None):
+        self.cb = callback
+    def _emit(self, msg):
+        try:
+            print(str(msg))
+        finally:
+            if self.cb:
+                try:
+                    self.cb(str(msg))
+                except Exception:
+                    pass
+    def debug(self, msg):
+        self._emit(msg)
+    def info(self, msg):
+        self._emit(msg)
+    def warning(self, msg):
+        self._emit(msg)
+    def error(self, msg):
+        self._emit(msg)
+
+
 def human_readable_size(num: int | float | None) -> str:
     if not num or num <= 0:
         return "-"
@@ -35,44 +57,65 @@ def sanitize_filename(name: str) -> str:
 
 
 def fetch_video_info(url):
-    """Fetch video title and thumbnail URL using yt-dlp without downloading."""
+    """Fetch video or playlist title and thumbnail quickly using yt-dlp."""
     try:
-        ydl_opts = {"quiet": True, "no_warnings": True, "skip_download": True}
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": True,     # fast metadata
+            "playlist_items": "1",  # only need first item for preview
+            "socket_timeout": 10,
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            # If it's a playlist, pick first entry for preview
-            if info.get("_type") == "playlist" and info.get("entries"):
-                first = info["entries"][0] or {}
-                return (
-                    first.get("title", info.get("title", "Unknown Title")),
-                    first.get("thumbnail", info.get("thumbnail", "")),
-                )
+            if info.get("_type") == "playlist":
+                title = info.get("title") or "Playlist"
+                thumb = info.get("thumbnail", "")
+                return title or "Unknown Title", thumb
             return info.get("title", "Unknown Title"), info.get("thumbnail", "")
     except Exception:
         return "Unknown Title", ""
 
 
 def update_thumbnail(thumbnail_url):
-    """Download and display the video thumbnail in GUI properly."""
+    """Deprecated: replaced by fetch_thumbnail_image + show_thumbnail."""
+    try:
+        img = fetch_thumbnail_image(thumbnail_url)
+        show_thumbnail(img)
+    except Exception as e:
+        print(f"Thumbnail Error: {e}")
+        thumbnail_label.config(image="", text="Thumbnail Not Available", width=20, height=2)
+        thumbnail_label.image = None
+
+
+def fetch_thumbnail_image(thumbnail_url):
+    """Download thumbnail image and return PIL Image. No UI updates here."""
     try:
         if not thumbnail_url:
-            raise ValueError("Invalid URL")
-
+            return None
         response = requests.get(thumbnail_url, stream=True, timeout=15)
         response.raise_for_status()
         image_data = Image.open(BytesIO(response.content))
-
-        max_width, max_height = 640, 360  # Target preview resolution
-        image_data.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
-
-        thumbnail_img = ImageTk.PhotoImage(image_data)
-
-        thumbnail_label.config(image=thumbnail_img, text="")
-        thumbnail_label.image = thumbnail_img  # Keep reference
-        root.update_idletasks()
-
+        return image_data
     except Exception as e:
-        print(f"Thumbnail Error: {e}")
+        print(f"Thumbnail fetch error: {e}")
+        return None
+
+
+def show_thumbnail(image_obj):
+    """Render a PIL Image into the UI. Must be called from the Tk main thread."""
+    try:
+        if image_obj is None:
+            raise ValueError("no image")
+        img = image_obj.copy()
+        max_width, max_height = 640, 360
+        img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+        thumbnail_img = ImageTk.PhotoImage(img)
+        thumbnail_label.config(image=thumbnail_img, text="")
+        thumbnail_label.image = thumbnail_img
+    except Exception as e:
+        print(f"Thumbnail render error: {e}")
         thumbnail_label.config(image="", text="Thumbnail Not Available", width=20, height=2)
         thumbnail_label.image = None
 
@@ -91,15 +134,30 @@ def build_format_string(selection: str) -> str:
     return mapping.get(selection, mapping["Best MP4"])
 
 
+def maybe_playlist_url(url: str, want_playlist: bool) -> str:
+    """If user wants playlist and URL contains list=, convert to playlist URL to ensure full download."""
+    if want_playlist and "list=" in url:
+        m = re.search(r"[?&]list=([^&]+)", url)
+        if m:
+            return f"https://www.youtube.com/playlist?list={m.group(1)}"
+    return url
+
+
 # --------------- Download Logic ---------------
 
 def download_youtube_video(url: str, output_path: str, selection: str, options: dict,
                            progress_var: tk.IntVar, title_var: tk.StringVar, progress_text_var: tk.StringVar):
     try:
         # Preview info
-        title, thumbnail_url = fetch_video_info(url)
-        title_var.set(title)
-        update_thumbnail(thumbnail_url)
+        preview_url = maybe_playlist_url(url, options.get("playlist", False))
+        title, thumbnail_url = fetch_video_info(preview_url)
+        # Update title safely on UI thread
+        root.after(0, lambda: title_var.set(title))
+        # Download thumbnail in background, then render on UI thread
+        def _thumb_worker():
+            img = fetch_thumbnail_image(thumbnail_url)
+            root.after(0, lambda: show_thumbnail(img))
+        threading.Thread(target=_thumb_worker, daemon=True).start()
 
         if not os.path.exists(output_path):
             os.makedirs(output_path, exist_ok=True)
@@ -163,18 +221,39 @@ def download_youtube_video(url: str, output_path: str, selection: str, options: 
             elif status == 'finished':
                 update_progress_ui(100, 'Merging/Finishing...')
 
+        # UI logger used by yt-dlp
+        def ui_log(msg: str):
+            print(str(msg))
+            try:
+                root.after(0, lambda m=str(msg): progress_text_var.set(m))
+            except Exception:
+                pass
+
         # ydl options
+        outtmpl = os.path.join(output_path, '%(title)s.%(ext)s')
+        if want_playlist:
+            # Organize playlist downloads into a folder and prefix index for order
+            outtmpl = os.path.join(output_path, '%(playlist_title)s', '%(playlist_index)03d - %(title)s.%(ext)s')
+
         ydl_opts: dict = {
             'format': fmt,
-            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+            'outtmpl': outtmpl,
             'progress_hooks': [progress_hook],
-            'noplaylist': not want_playlist,
+            # 'noplaylist' behavior: when a single video URL contains a playlist param,
+            # yt-dlp downloads just the video unless we explicitly enable playlist.
             'ignoreerrors': want_playlist,  # continue on playlist errors
-            'quiet': True,
-            'no_warnings': True,
+            'quiet': False,
+            'no_warnings': False,
             'retries': 5,
             'restrictfilenames': True,
+            'socket_timeout': 20,
+            'logger': YTDLogger(callback=ui_log),
         }
+
+        if want_playlist:
+            ydl_opts['yesplaylist'] = True
+        else:
+            ydl_opts['noplaylist'] = True
 
         if want_subs:
             ydl_opts.update({
@@ -204,7 +283,10 @@ def download_youtube_video(url: str, output_path: str, selection: str, options: 
         update_progress_ui(0, 'Starting...')
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            target_url = maybe_playlist_url(url, want_playlist)
+            ui_log(f"Starting download: playlist={want_playlist}, quality={selection}")
+            ui_log(f"URL: {target_url}")
+            ydl.download([target_url])
 
         update_progress_ui(100, 'Done')
         messagebox.showinfo("Success", "Download complete!")
@@ -262,10 +344,12 @@ def do_preview():
     thumbnail_label.config(image="", text="Loading...", width=20, height=2)
 
     def _work():
-        title, thumb = fetch_video_info(url)
+        preview_url = maybe_playlist_url(url, playlist_var.get())
+        title, thumb_url = fetch_video_info(preview_url)
+        img = fetch_thumbnail_image(thumb_url)
         def _apply():
             title_var.set(title)
-            update_thumbnail(thumb)
+            show_thumbnail(img)
         root.after(0, _apply)
 
     threading.Thread(target=_work, daemon=True).start()
