@@ -1,67 +1,78 @@
 # YouTubeDownloader4k
 
-A simple yet powerful **YouTube Video Downloader** with a graphical user interface (GUI) built using **Tkinter**. This tool allows users to download YouTube videos in high quality even upto 4k along with displaying the video title and thumbnail.
+A fast, modern YouTube downloader with a clean Tkinter GUI powered by yt-dlp. Download single videos or full playlists, pick quality (up to 4K), preview titles and thumbnails, and track real-time progress with speed and ETA.
 
 ## 🚀 Features
 
-- **Download YouTube Videos**: Supports downloading videos in the best available quality (MP4 format).
-- **Auto-fetch Video Title**: Displays the video title before downloading.
-- **HD Thumbnail Preview**: Shows a thumbnail of the video while ddownloading.
-- **Progress Bar**: Real-time progress updates for the downloading process.
-- **Multithreading**: Prevents UI freezing by running the download in a separate thread.
-- **User-friendly Interface**: Simple, clean, and easy-to-use GUI.
+- Single videos and full playlists (organized into a playlist folder with numbered items)
+- Quality presets: Best Auto, Best MP4, 2160p (4K), 1440p (2K), 1080p, 720p
+- Audio-only: M4A direct or MP3 (via FFmpeg)
+- Preview: Paste/Preview buttons, video title, and HD thumbnail
+- Progress details: percentage, size, speed, and ETA
+- Output folder picker with last-location memory
+- Subtitles: EN/HI (auto if available)
+- Optional: embed thumbnail and write metadata tags
+- Responsive UI (multithreaded)
 
-## 📌 Requirements
+## 📦 Requirements
 
-Ensure you have the following dependencies installed before running the script:
+- Python 3.10+
+- Dependencies (installed via requirements.txt):
+  - yt-dlp, Pillow, requests
+- Optional but recommended: FFmpeg on PATH (required for MP3, merging separate video/audio, and embedding thumbnails)
 
-```bash
-pip install yt-dlp pillow requests
+## ⚙️ Setup
+
+Windows PowerShell (recommended):
+
+```powershell
+# From the project folder
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python .\main.py
 ```
 
-## 🔧 Installation & Usage
-  Simply Clone this repo and Run Main.py file in terminal or any compiler.
+FFmpeg (optional):
+- winget: `winget install Gyan.FFmpeg`
+- Chocolatey: `choco install ffmpeg`
 
+## 🧭 Usage
 
- **Enter the YouTube Video URL** and choose a folder to save the video.
- **Watch the progress bar update** as the download proceeds.
- **Enjoy your downloaded video!**
+1) Paste a YouTube URL and click Preview to see the title and thumbnail.
+2) Choose an output folder.
+3) Select quality and options (playlist, subtitles, embed thumbnail, metadata).
+4) Click Download.
 
-## ❌ Limitations
+Tips:
+- For playlists, check “Download entire playlist.” The app normalizes list URLs and saves items under a playlist folder with numeric order.
+- MP3 conversion and thumbnail embedding require FFmpeg.
 
-- **No Playlist Support**: The script currently supports only single-video downloads.
-- **No Format Selection**: Downloads only in MP4 format with the best available quality.
-- **No Audio-Only Option**: Does not support downloading audio-only files (yet!).
+## 📝 Notes & Troubleshooting
 
-## 🔮 Future Enhancements
-
-- ✅ **Playlist Download Support**
-- ✅ **Format Selection (MP3, MKV, WEBM, etc.)**
-- ✅ **Audio-Only Downloads**
-- ✅ **Dark Mode for better UI**
-- ✅ **More Customization Options**
-- ✅ **Standalone File**
-- ✅ **UI improvements**
+- Age-restricted/private/unavailable content may require authentication or won’t download.
+- If a playlist does not start, ensure the URL contains `list=` and is publicly accessible.
+- Network timeouts or throttling can occur; try again later or with a different network.
+- The app stores only a local `settings.json` for your last chosen folder.
 
 ## 🛠 Built With
 
-- **Python** - Core programming language
-- **Tkinter** - GUI framework
-- **yt-dlp** - YouTube downloading library
-- **Pillow** - Image processing (for thumbnails)
-- **Requests** - Fetching thumbnails from the internet
+- Python, Tkinter
+- yt-dlp
+- Pillow (thumbnails)
+- Requests (thumbnail fetch)
 
 ## 📜 License
 
-This project is licensed under the **GNU License** – feel free to modify and use it as needed.
+Licensed under the GNU License. Use and modify as needed.
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to fork the repo and submit pull requests.
+Issues and PRs are welcome. Fork and submit a pull request.
 
-## ❤️ Support
+## ⭐ Support
 
-If you like this project, consider giving it a ⭐ on GitHub!
+If you find this useful, please star the repo.
 
 ---
 
